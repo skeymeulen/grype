@@ -4,6 +4,7 @@ x-ref:
     - docker.io/cloudbees/cloudbees-core-agent:2.289.2.2@sha256:d48f0546b4cf5ef4626136242ce302f94a42751156b7be42f4b1b75a66608880
     - docker.io/cloudbees/cloudbees-core-mm:2.277.3.1@sha256:4c564f473d38f23da1caa48c4ef53b958ef03d279232007ad3319b1f38584bdb
     - docker.io/cloudbees/cloudbees-core-oc:2.289.2.2@sha256:9cd85ee84e401dc27e3a8268aae67b594a651b2f4c7fc056ca14c7b0a0a6b82d
+    - docker.io/anchore/test_images:grype-quality-dotnet-69f15d2@sha256:e25a9a175433c2bfe9c04e6482e6c5eca0491629144c78061763f7f604fdea80
     - docker.io/anchore/test_images:grype-quality-node-d89207b@sha256:f56164678054e5eb59ab838367373a49df723b324617b1ba6de775749d7f91d4
     - docker.io/anchore/test_images:grype-quality-python-d89207b@sha256:b2b58a55c0b03c1626d2aaae2add9832208b02124dda7b7b41811e14f0fb272c
     - docker.io/anchore/test_images:grype-quality-java-d89207b@sha256:b3534fc2e37943136d5b54e3a58b55d4ccd4363d926cf7aa5bf55a524cf8275b
@@ -13,6 +14,8 @@ x-ref:
     - docker.io/anchore/test_images:appstreams-centos-stream-8-1a287dd@sha256:808f6cf3cf4473eb39ff9bb47ead639d2ed71255b75b9b140162b58c6102bcc9
     - docker.io/anchore/test_images:appstreams-oraclelinux-8-1a287dd@sha256:c8d664b0e728d52f57eeb98ed1899c16d3b265f02ddfb41303d7a16c31e0b0f1
     - docker.io/anchore/test_images:appstreams-rhel-8-1a287dd@sha256:524ff8a75f21fd886ec7ed82387766df386671e8b77e898d05786118d5b7880b
+    - docker.io/anchore/test_images:appstreams-nodejs-base-rhel-9-1b0b1b4@sha256:fc6f7a37d7e320f6ff3643d4ec9a208adb1462cd16027f045b56563e12bb0461
+    - docker.io/anchore/test_images:appstreams-nodejs-18-rhel-9-1b0b1b4@sha256:08dbfad2d6af9afe47f7647b0b8f38fd29fc9e89306cfc39c9509981f9388b7f
     - docker.io/anchore/test_images:java-56d52bc@sha256:10008791acbc5866de04108746a02a0c4029ce3a4400a9b3dad45d7f2245f9da
     - docker.io/anchore/test_images:npm-56d52bc@sha256:ba42ded8613fc643d407a050faf5ab48cfb405ad3ef2015bf6feeb5dff44738d
     - docker.io/anchore/test_images:gems-56d52bc@sha256:5763c8a225f950961bf01ddec68e36f18e236130e182f2b9290a6e03b9777bfe
@@ -78,6 +81,8 @@ x-ref:
     - docker.io/ubuntu:22.10@sha256:80fb4ea0c0a384a3072a6be1879c342bb636b0d105209535ba893ba75ab38ede
     - docker.io/ubuntu:23.04@sha256:09f035f46361d193ded647342903b413d57d05cc06acff8285f9dda9f2d269d5
     - gcr.io/distroless/python3-debian11@sha256:69ae7f133d33faab720af28e78fb45707b623bcbc94ae02a07c633bf053f4b40
+    - registry.suse.com/suse/sles12sp4:26.380@sha256:94b537f5b312e7397b5d0bbb3d892f961acdd9454950fc233d77f771e25335fb
+    - registry.suse.com/suse/sle15:15.1.6.2.461@sha256:6e613c994c3b33224e439ef8ee9003fb69416f77f7a6b1da0b18981d5aa3bb75
 
 # new vulnerabilities are added all of the time, instead of keeping up it's easier to ignore newer entries.
 # This approach helps tremendously with keeping the analysis relatively stable.
@@ -93,7 +98,7 @@ result-sets:
 
         - name: syft
           # note: we want to use a fixed version of syft for capturing all results (NOT "latest")
-          version: v0.89.0
+          version: v0.98.0
           produces: SBOM
           refresh: false
 
@@ -103,9 +108,9 @@ result-sets:
           # By pinning the DB the grype code itself becomes the independent variable under test (and not the
           # every-changing DB). That being said, we should be updating this DB periodically to ensure what we
           # are testing with is not too stale.
-          version: git:current-commit+import-db=db.tar.gz
+          # version: git:current-commit+import-db=db.tar.gz
           # for local build of grype, use for example:
-          # version: path:../../
+          version: path:../../+import-db=db.tar.gz
           takes: SBOM
 
         - name: grype

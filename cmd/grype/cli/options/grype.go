@@ -19,6 +19,7 @@ type Grype struct {
 	CheckForAppUpdate      bool               `yaml:"check-for-app-update" json:"check-for-app-update" mapstructure:"check-for-app-update"` // whether to check for an application update on start up or not
 	OnlyFixed              bool               `yaml:"only-fixed" json:"only-fixed" mapstructure:"only-fixed"`                               // only fail if detected vulns have a fix
 	OnlyNotFixed           bool               `yaml:"only-notfixed" json:"only-notfixed" mapstructure:"only-notfixed"`                      // only fail if detected vulns don't have a fix
+	IgnoreStates           string             `yaml:"ignore-states" json:"ignore-wontfix" mapstructure:"ignore-wontfix"`                    // ignore detections for vulnerabilities matching these comma-separated fix states
 	Platform               string             `yaml:"platform" json:"platform" mapstructure:"platform"`                                     // --platform, override the target platform for a container image
 	Search                 search             `yaml:"search" json:"search" mapstructure:"search"`
 	Ignore                 []match.IgnoreRule `yaml:"ignore" json:"ignore" mapstructure:"ignore"`
@@ -103,6 +104,11 @@ func (o *Grype) AddFlags(flags clio.FlagSet) {
 		"ignore matches for vulnerabilities that are fixed",
 	)
 
+	flags.StringVarP(&o.IgnoreStates,
+		"ignore-states", "",
+		fmt.Sprintf("ignore matches for vulnerabilities with specified comma separated fix states, options=%v", vulnerability.AllFixStates()),
+	)
+
 	flags.BoolVarP(&o.ByCVE,
 		"by-cve", "",
 		"orient results by CVE instead of the original vulnerability ID when possible",
@@ -131,7 +137,7 @@ func (o *Grype) AddFlags(flags clio.FlagSet) {
 
 func (o *Grype) PostLoad() error {
 	if o.FailOn != "" {
-		failOnSeverity := *o.FailOnServerity()
+		failOnSeverity := *o.FailOnSeverity()
 		if failOnSeverity == vulnerability.UnknownSeverity {
 			return fmt.Errorf("bad --fail-on severity value '%s'", o.FailOn)
 		}
@@ -139,7 +145,7 @@ func (o *Grype) PostLoad() error {
 	return nil
 }
 
-func (o Grype) FailOnServerity() *vulnerability.Severity {
+func (o Grype) FailOnSeverity() *vulnerability.Severity {
 	severity := vulnerability.ParseSeverity(o.FailOn)
 	return &severity
 }
