@@ -1,11 +1,11 @@
 package integration
 
 import (
+	"context"
 	"sort"
 	"strings"
 	"testing"
 
-	"github.com/facebookincubator/nvdtools/wfn"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/stretchr/testify/require"
@@ -21,15 +21,16 @@ import (
 	"github.com/anchore/grype/internal/stringutil"
 	"github.com/anchore/stereoscope/pkg/imagetest"
 	"github.com/anchore/syft/syft"
+	"github.com/anchore/syft/syft/cataloging/pkgcataloging"
+	"github.com/anchore/syft/syft/cpe"
 	"github.com/anchore/syft/syft/linux"
 	syftPkg "github.com/anchore/syft/syft/pkg"
-	"github.com/anchore/syft/syft/pkg/cataloger"
 	"github.com/anchore/syft/syft/source"
 )
 
 func addAlpineMatches(t *testing.T, theSource source.Source, catalog *syftPkg.Collection, theStore *mockStore, theResult *match.Matches) {
 	packages := catalog.PackagesByPath("/lib/apk/db/installed")
-	if len(packages) != 1 {
+	if len(packages) != 3 {
 		t.Logf("Alpine Packages: %+v", packages)
 		t.Fatalf("problem with upstream syft cataloger (alpine)")
 	}
@@ -141,7 +142,6 @@ func addPythonMatches(t *testing.T, theSource source.Source, catalog *syftPkg.Co
 	require.NoError(t, err)
 
 	theResult.Add(match.Match{
-
 		Vulnerability: *vulnObj,
 		Package:       thePkg,
 		Details: []match.Detail{
@@ -168,21 +168,20 @@ func addPythonMatches(t *testing.T, theSource source.Source, catalog *syftPkg.Co
 
 func addDotnetMatches(t *testing.T, theSource source.Source, catalog *syftPkg.Collection, theStore *mockStore, theResult *match.Matches) {
 	packages := catalog.PackagesByPath("/dotnet/TestLibrary.deps.json")
-	if len(packages) != 1 {
+	if len(packages) != 2 { // TestLibrary + AWSSDK.Core
 		for _, p := range packages {
 			t.Logf("Dotnet Package: %s %+v", p.ID(), p)
 		}
 
 		t.Fatalf("problem with upstream syft cataloger (dotnet)")
 	}
-	thePkg := pkg.New(packages[0])
+	thePkg := pkg.New(packages[1])
 	normalizedName := theStore.normalizedPackageNames["github:language:dotnet"][thePkg.Name]
 	theVuln := theStore.backend["github:language:dotnet"][normalizedName][0]
 	vulnObj, err := vulnerability.NewVulnerability(theVuln)
 	require.NoError(t, err)
 
 	theResult.Add(match.Match{
-
 		Vulnerability: *vulnObj,
 		Package:       thePkg,
 		Details: []match.Detail{
@@ -219,7 +218,6 @@ func addRubyMatches(t *testing.T, theSource source.Source, catalog *syftPkg.Coll
 	require.NoError(t, err)
 
 	theResult.Add(match.Match{
-
 		Vulnerability: *vulnObj,
 		Package:       thePkg,
 		Details: []match.Detail{
@@ -315,7 +313,7 @@ func addJavaMatches(t *testing.T, theSource source.Source, catalog *syftPkg.Coll
 	}
 	theSyftPkg := packages[0]
 
-	groupId := theSyftPkg.Metadata.(syftPkg.JavaMetadata).PomProperties.GroupID
+	groupId := theSyftPkg.Metadata.(syftPkg.JavaArchive).PomProperties.GroupID
 	lookup := groupId + ":" + theSyftPkg.Name
 
 	thePkg := pkg.New(theSyftPkg)
@@ -362,7 +360,6 @@ func addDpkgMatches(t *testing.T, theSource source.Source, catalog *syftPkg.Coll
 	require.NoError(t, err)
 
 	theResult.Add(match.Match{
-
 		Vulnerability: *vulnObj,
 		Package:       thePkg,
 		Details: []match.Detail{
@@ -441,7 +438,6 @@ func addRhelMatches(t *testing.T, theSource source.Source, catalog *syftPkg.Coll
 	require.NoError(t, err)
 
 	theResult.Add(match.Match{
-
 		Vulnerability: *vulnObj,
 		Package:       thePkg,
 		Details: []match.Detail{
@@ -545,6 +541,45 @@ func addHaskellMatches(t *testing.T, theSource source.Source, catalog *syftPkg.C
 	})
 }
 
+func addRustMatches(t *testing.T, theSource source.Source, catalog *syftPkg.Collection, theStore *mockStore, theResult *match.Matches) {
+	packages := catalog.PackagesByPath("/hello-auditable")
+	if len(packages) < 1 {
+		t.Logf("Rust Packages: %+v", packages)
+		t.Fatalf("problem with upstream syft cataloger (cargo-auditable-binary-cataloger)")
+	}
+
+	for _, p := range packages {
+		thePkg := pkg.New(p)
+		theVuln := theStore.backend["github:language:rust"][strings.ToLower(thePkg.Name)][0]
+		vulnObj, err := vulnerability.NewVulnerability(theVuln)
+		require.NoError(t, err)
+
+		theResult.Add(match.Match{
+			Vulnerability: *vulnObj,
+			Package:       thePkg,
+			Details: []match.Detail{
+				{
+					Type:       match.ExactDirectMatch,
+					Confidence: 1.0,
+					SearchedBy: map[string]any{
+						"language":  "rust",
+						"namespace": "github:language:rust",
+						"package": map[string]string{
+							"name":    thePkg.Name,
+							"version": thePkg.Version,
+						},
+					},
+					Found: map[string]any{
+						"versionConstraint": vulnObj.Constraint.String(),
+						"vulnerabilityID":   vulnObj.ID,
+					},
+					Matcher: match.RustMatcher,
+				},
+			},
+		})
+	}
+}
+
 func TestMatchByImage(t *testing.T) {
 	observedMatchers := stringutil.NewStringSet()
 	definedMatchers := stringutil.NewStringSet()
@@ -603,6 +638,14 @@ func TestMatchByImage(t *testing.T) {
 				return expectedMatches
 			},
 		},
+		{
+			fixtureImage: "image-rust-auditable-match-coverage",
+			expectedFn: func(theSource source.Source, catalog *syftPkg.Collection, theStore *mockStore) match.Matches {
+				expectedMatches := match.NewMatches()
+				addRustMatches(t, theSource, catalog, theStore, &expectedMatches)
+				return expectedMatches
+			},
+		},
 	}
 
 	for _, test := range tests {
@@ -625,14 +668,13 @@ func TestMatchByImage(t *testing.T) {
 			})
 
 			// TODO: relationships are not verified at this time
-			config := cataloger.DefaultConfig()
+			// enable all catalogers to cover non default cases
+			config := syft.DefaultCreateSBOMConfig().WithCatalogerSelection(pkgcataloging.NewSelectionRequest().WithDefaults("all"))
 			config.Search.Scope = source.SquashedScope
 
-			// enable all catalogers to cover non default cases
-			config.Catalogers = []string{"all"}
-
-			collection, _, theDistro, err := syft.CatalogPackages(theSource, config)
+			s, err := syft.CreateSBOM(context.Background(), theSource, config)
 			require.NoError(t, err)
+			require.NotNil(t, s)
 
 			matchers := matcher.NewDefaultMatchers(matcher.Config{})
 
@@ -646,8 +688,7 @@ func TestMatchByImage(t *testing.T) {
 				ExclusionProvider: ep,
 			}
 
-			actualResults := grype.FindVulnerabilitiesForPackage(str, theDistro, matchers, pkg.FromCollection(collection, pkg.SynthesisConfig{}))
-
+			actualResults := grype.FindVulnerabilitiesForPackage(str, s.Artifacts.LinuxDistribution, matchers, pkg.FromCollection(s.Artifacts.Packages, pkg.SynthesisConfig{}))
 			for _, m := range actualResults.Sorted() {
 				for _, d := range m.Details {
 					observedMatchers.Add(string(d.Matcher))
@@ -655,7 +696,7 @@ func TestMatchByImage(t *testing.T) {
 			}
 
 			// build expected matches from what's discovered from the catalog
-			expectedMatches := test.expectedFn(theSource, collection, theStore)
+			expectedMatches := test.expectedFn(theSource, s.Artifacts.Packages, theStore)
 
 			assertMatches(t, expectedMatches.Sorted(), actualResults.Sorted())
 		})
@@ -718,7 +759,6 @@ func TestMatchByImage(t *testing.T) {
 
 		t.Log(cmp.Diff(defs, obs))
 	}
-
 }
 
 // testIgnoredMatches returns an list of ignored matches to test the vex
@@ -737,12 +777,14 @@ func testIgnoredMatches() []match.IgnoredMatch {
 					Version:  "0.9.9",
 					Licenses: []string{"GPL-2.0-or-later"},
 					Type:     "apk",
-					CPEs: []wfn.Attributes{
+					CPEs: []cpe.CPE{
 						{
-							Part:    "a",
-							Vendor:  "libvncserver",
-							Product: "libvncserver",
-							Version: "0.9.9",
+							Attributes: cpe.Attributes{
+								Part:    "a",
+								Vendor:  "libvncserver",
+								Product: "libvncserver",
+								Version: "0.9.9",
+							},
 						},
 					},
 					PURL:      "pkg:apk/alpine/libvncserver@0.9.9?arch=x86_64&distro=alpine-3.12.0",
@@ -812,7 +854,7 @@ func vexMatches(t *testing.T, ignoredMatches []match.IgnoredMatch, vexStatus vex
 
 func assertMatches(t *testing.T, expected, actual []match.Match) {
 	t.Helper()
-	var opts = []cmp.Option{
+	opts := []cmp.Option{
 		cmpopts.IgnoreFields(vulnerability.Vulnerability{}, "Constraint"),
 		cmpopts.IgnoreFields(pkg.Package{}, "Locations"),
 		cmpopts.SortSlices(func(a, b match.Match) bool {

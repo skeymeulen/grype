@@ -21,11 +21,9 @@ func isUnknownTarget(targetSW string) bool {
 	// supported by syft but are signifcant sources of false positives and should be
 	// considered known for the purposes of filtering here
 	known := map[string]bool{
-		"wordpress":  true,
-		"wordpress_": true,
-		"joomla":     true,
-		"joomla\\!":  true,
-		"drupal":     true,
+		"joomla":    true,
+		"joomla\\!": true,
+		"drupal":    true,
 	}
 
 	if _, ok := known[targetSW]; ok {
@@ -55,7 +53,7 @@ func onlyVulnerableTargets(p pkg.Package, allVulns []vulnerability.Vulnerability
 	for _, vuln := range allVulns {
 		isPackageVulnerable := len(vuln.CPEs) == 0
 		for _, cpe := range vuln.CPEs {
-			targetSW := cpe.TargetSW
+			targetSW := cpe.Attributes.TargetSW
 			mismatchWithUnknownLanguage := targetSW != string(p.Language) && isUnknownTarget(targetSW)
 			if targetSW == wfn.Any || targetSW == wfn.NA || targetSW == string(p.Language) || mismatchWithUnknownLanguage {
 				isPackageVulnerable = true
